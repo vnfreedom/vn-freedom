@@ -1,0 +1,146 @@
+#pragma once
+
+constexpr auto OSU_STATUS_IN_MENU = 0;
+constexpr auto OSU_STATUS_PLAYING = 2;
+constexpr auto OSU_STATUS_IN_SONG_SELECT = 5;
+
+inline Process *process;
+
+class hit_object {
+	uintptr_t base;
+
+public:
+	int32_t start_time;
+	int32_t end_time;
+	int32_t type;
+	int32_t column;
+
+    bool is_slider;
+
+	hit_object() : base(0), start_time(0), end_time(0), type(0),
+		column(0) {}
+
+	explicit hit_object(uintptr_t base) : base(base) {
+		start_time = get_start_time();
+		end_time = get_end_time();
+		type = get_type();
+		column = get_column();
+
+        is_slider = start_time != end_time;
+	}
+
+private:
+	[[nodiscard]] int32_t get_start_time() const {
+		return process->read_memory<int32_t>(base + 0x10);
+	}
+
+	[[nodiscard]] int32_t get_end_time() const {
+		return process->read_memory<int32_t>(base + 0x14);
+	}
+
+	[[nodiscard]] int32_t get_type() const {
+		return process->read_memory<int32_t>(base + 0x18);
+	}
+
+	[[nodiscard]] int32_t get_column() const {
+		return process->read_memory<int32_t>(base + 0x9C);
+	}
+};
+
+template<typename T>
+struct list_container {
+	uintptr_t base;
+
+	size_t size;
+	std::vector<T> content;
+
+	explicit list_container(uintptr_t base) : base(base), size(get_size()),
+		content(get_content()) {}
+
+	[[nodiscard]] size_t get_size() {
+		return process->read_memory_safe<size_t>("list contents size",
+			base + 0xC);
+	}
+
+	[[nodiscard]] std::vector<T> get_content() {
+		auto content_address = process->read_memory_safe<uintptr_t>(
+			"list content address", base + 0x4);
+
+		auto content_size = get_size();
+
+		std::vector<T> vector;
+		vector.reserve(content_size);
+
+		for (size_t i = 0; i < content_size; i++) {
+			vector.push_back(T(process->read_memory<uintptr_t>(
+				content_address + 0x8 + (i * 0x4))));
+		}
+
+		return vector;
+	}
+};
+
+struct hit_manager_headers {
+	uintptr_t base;
+
+	int column_count;
+
+	explicit hit_manager_headers(uintptr_t base) : base(base),
+		column_count(get_column_count()) {}
+
+	[[nodiscard]] int get_column_count() const {
+		return static_cast<int>(process->read_memory_safe<float>(
+			"column count", base + 0x30));
+	}
+};
+
+struct hit_manager {
+	uintptr_t base;
+
+	hit_manager_headers headers;
+	list_container<hit_object> list;
+
+	explicit hit_manager(uintptr_t base) : base(base), headers(get_headers()),
+		list(get_list()) {}
+
+	[[nodiscard]] hit_manager_headers get_headers() const {
+		auto headers_base = process->read_memory_safe<uintptr_t>("hit manager headers",
+			base + 0x30);
+
+		if (!headers_base) {
+			throw std::runtime_error("hit manager headers pointer was null");
+		}
+
+		return hit_manager_headers(headers_base);
+	}
+
+	[[nodiscard]] list_container<hit_object> get_list() const {
+		auto list_base = process->read_memory_safe<uintptr_t>(
+			"hitpoint list container", base + 0x48);
+
+		if (!list_base) {
+			throw std::runtime_error("hitpoint list container pointer was null");
+		}
+
+		return list_container<hit_object>(list_base);
+	}
+};
+
+struct map_player {
+	uintptr_t base;
+
+	hit_manager manager;
+
+	explicit map_player(uintptr_t base) : base(base), manager(get_hit_manager()) {}
+
+	[[nodiscard]] hit_manager get_hit_manager() const {
+		auto manager_base = process->read_memory_safe<uintptr_t>("hit manager",
+			base + 0x44);
+
+		if (!manager_base) {
+			throw std::runtime_error("hit manager pointer was null");
+		}
+
+		return hit_manager(manager_base);
+	}
+};

@@ -1,0 +1,11 @@
+{
+    "compensation_offset": -15,
+    "format_version": 1,
+    "humanization_modifier": 0,
+    "humanization_type": 1,
+    "keys": "asdfjkl;",
+    "mirror_mod": false,
+    "randomization_mean": 0,
+    "randomization_stddev": 0,
+    "tap_time": 20
+}
